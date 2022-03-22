@@ -14,8 +14,6 @@ with open('train_label.txt', 'r') as f_in:
     train_label = f_in.readlines()
     train_label = list(map(lambda row: list(map(int, row.split(' '))), train_label))
 
-train_data = np.array(train_data, dtype=np.double)
-train_label = np.array(train_label, dtype=np.double)
 
 third_features = [int(row[2]) for row in train_data]
 third_feature_mean = sum(third_features)/1000
@@ -58,10 +56,10 @@ def train_svm(train_data, train_label, C):
       w: feature vector (column vector)
       b: bias term
     """
-    sample_size, feature_size = train_data.shape
-    w_b_slack_dim = 2*sample_size+feature_size
-    p = np.zeros((w_b_slack_dim, w_b_slack_dim))
-    for i in range(sample_size):
+    train_data = np.array(train_data, dtype=np.double)
+    train_label = np.array(train_label, dtype=np.double)
+    p = np.zeros((2060, 2060))
+    for i in range(2060):
         p[i][i] = 1.0
     # P = matrix(np.array([[1, 0, 0], [0, 0, 0], [0, 0, 0]], dtype=np.double))
     # w (60,)
@@ -69,28 +67,26 @@ def train_svm(train_data, train_label, C):
     # slack (1000,)
     # -> P (2060, 2060)
     P = matrix(p)
-    q = np.zeros(w_b_slack_dim)
-    for i in range(sample_size):
-        q[i+sample_size+feature_size] = C
+    q = np.zeros(2060)
+    for i in range(2058):
+        q[i+2] = C
     # Q = matrix(np.array([0, 0, C]))
     Q = matrix(q)
     # y/train_label is (1000,)
     # x/train_data is (1000, 60)
     
     
-    g_top = np.append(-np.dot(train_data.T, train_label), np.append(-train_label.T, np.array([-1.0]*sample_size)))
-    g_bottom = np.array([0.0]*(feature_size + sample_size) + [-1.0]*sample_size)
+    g_top = np.append(-np.dot(train_data.T, train_label), np.append(-train_label.T, np.array([-1.0]*1000)))
+    g_bottom = np.array([0.0]*60 + [0.0]*1000 + [-1.0]*1000)
 
-    # g = np.array([g_top, g_bottom], dtype=np.double)
-    g = np.append(g_top, g_bottom, axis=1)
+    g = np.array([g_top, g_bottom], dtype=np.double)
+    print(p.shape)
+    print(q.shape)
     print(g.shape)
     # G (2, 2060)
     G = matrix(g)
-    h = np.zeros(w_b_slack_dim)
-    h[:feature_size+sample_size] = -1.0
-    # H = matrix(np.array([-1.0, 0.0]).T)
-    H = matrix(h)
-    sol = solvers.qp(P,Q,G,H)
+    h = matrix(np.array([-1.0, 0.0]))
+    sol = solvers.qp(P,Q,G,h)
     return sol
 
 def test_svm(test_data, test_label, w, b):
@@ -108,7 +104,6 @@ def test_svm(test_data, test_label, w, b):
     M, D = test_data.shape
     hit = 0
     for data, label, b_val in zip(test_data, test_label, b):
-        # data = data.reshape((60,1))
         pred = np.dot(w.T, data) + b_val 
         if (pred > 0 and label == 1) or (pred < 0 and label == -1):
             hit += 1
@@ -119,6 +114,11 @@ def test_svm(test_data, test_label, w, b):
 Report the 5-fold cross-validation accuracy (averaged accuracy over each validation set) 
 and average training time (averaged over each training subset) on different value of C 
 taken from the set {4^−6, 4^−5, · · · , 4^5, 4^6}. '''
+train_data = np.array(train_data, dtype=np.double)
+train_label = np.array(train_label, dtype=np.double)
+
+train_data, test_data = normalize(train_data, test_data)
+
 def cross_validate(k, total_data, total_label, C):
     avg_accuracy = 0
     avg_time = 0
@@ -143,21 +143,15 @@ def cross_validate(k, total_data, total_label, C):
     avg_time /= 5
     return avg_accuracy, avg_time
 
-C_vals = [4**i for i in range(-6, 7)]
 avg_accuracies = []
 avg_times = []
-# (train_data.shape) (1000, 60)
-# (test_data.shape) (2175, 60)
-
-train_data, test_data = normalize(train_data, test_data)
-total_data = np.concatenate((train_data, test_data))
-total_label = np.append(train_label, test_label)
-
+C_vals = [4**i for i in range(-6, 7)]
 k = 5
 for C in C_vals:
-    avg_accuracy, avg_time = cross_validate(k, total_data, total_label, C)
-    avg_accuracies.append(avg_accuracy)
-    avg_times.append(avg_time)
+    train_svm(train_data, train_label, C)
+#     avg_accuracy, avg_time = cross_validate(k, train_data, train_label, C)
+#     avg_accuracies.append(avg_accuracy)
+#     avg_times.append(avg_time)
 
-print(avg_accuracies)
-print(avg_times)
+# print(avg_accuracies)
+# print(avg_times)
