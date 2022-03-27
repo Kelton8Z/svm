@@ -56,37 +56,37 @@ def train_svm(train_data, train_label, C):
       w: feature vector (column vector)
       b: bias term
     """
+    w_b_slack_dim = 861
     train_data = np.array(train_data, dtype=np.double)
     train_label = np.array(train_label, dtype=np.double)
-    p = np.zeros((2060, 2060))
-    for i in range(2060):
+    p = np.zeros((861, 861))
+    for i in range(60):
         p[i][i] = 1.0
-    # P = matrix(np.array([[1, 0, 0], [0, 0, 0], [0, 0, 0]], dtype=np.double))
-    # w (60,)
-    # b (1000,)
-    # slack (1000,)
-    # -> P (2060, 2060)
-    P = matrix(p)
-    q = np.zeros(2060)
-    for i in range(2058):
-        q[i+2] = C
-    # Q = matrix(np.array([0, 0, C]))
-    Q = matrix(q)
-    # y/train_label is (1000,)
-    # x/train_data is (1000, 60)
-    
-    
-    g_top = np.append(-np.dot(train_data.T, train_label), np.append(-train_label.T, np.array([-1.0]*1000)))
-    g_bottom = np.array([0.0]*60 + [0.0]*1000 + [-1.0]*1000)
 
-    g = np.array([g_top, g_bottom], dtype=np.double)
-    print(p.shape)
-    print(q.shape)
-    print(g.shape)
-    # G (2, 2060)
+    P = matrix(p)
+    
+    q = np.zeros(861)
+    for i in range(800):
+        q[i+61] = C
+
+    Q = matrix(q)
+
+    neg_yx = -np.dot(train_label.T, train_data)
+    g = np.zeros((1600, 861))
+    
+    for i in range(800):
+        g[i][:60] = neg_yx
+        g[i][60] = train_label[i]
+
+    for i in range(800):
+        g[i+800][61+i] = -1.0
+        g[i][61+i] = -1.0
+
+    
     G = matrix(g)
-    h = matrix(np.array([-1.0, 0.0]))
+    h = matrix(np.array([-1.0]*800 + [0.0]*800).T)
     sol = solvers.qp(P,Q,G,h)
+    # print(sol)
     return sol
 
 def test_svm(test_data, test_label, w, b):
@@ -103,8 +103,12 @@ def test_svm(test_data, test_label, w, b):
     """
     M, D = test_data.shape
     hit = 0
-    for data, label, b_val in zip(test_data, test_label, b):
-        pred = np.dot(w.T, data) + b_val 
+    w = np.array(w)
+    for data, label in zip(test_data, test_label):
+        assert(w.shape==(60,1))
+        assert(data.shape==(60,))
+        data.reshape((60,1))
+        pred = np.dot(w.T, data) + b
         if (pred > 0 and label == 1) or (pred < 0 and label == -1):
             hit += 1
 
@@ -123,35 +127,63 @@ def cross_validate(k, total_data, total_label, C):
     avg_accuracy = 0
     avg_time = 0
     batch_size = total_data.shape[0] // k
+    assert(batch_size==200)
     for i in range(k):
         start = i*batch_size
         end = start + batch_size
         test_data, test_label = total_data[start:end], total_label[start:end]
+        assert(test_data.shape==(200,60))
+        assert(test_label.shape==(200,1))
         train_data = np.concatenate((total_data[:start], total_data[end:]))
+        assert(train_data.shape==(800,60))
         train_label = np.append(total_label[:start], total_label[end:])
+        assert(train_label.shape==(800,))
 
         t1 = time()
         sol = train_svm(train_data, train_label, C)
         t2 = time()    
         avg_time += t2 - t1
         w = sol['x'][:60]
-        b = sol['x'][60:1060]
+        b = sol['x'][61]
+        # print(len(set(sol['x'][61:])))
+        # assert(len(set(sol['x'][61:]))==1)
         accuracy = test_svm(test_data, test_label, w, b)
         avg_accuracy += accuracy
 
-    avg_accuracy /= 5
-    avg_time /= 5
+    avg_accuracy /= k
+    avg_time /= k
     return avg_accuracy, avg_time
 
 avg_accuracies = []
 avg_times = []
 C_vals = [4**i for i in range(-6, 7)]
 k = 5
-for C in C_vals:
-    train_svm(train_data, train_label, C)
-#     avg_accuracy, avg_time = cross_validate(k, train_data, train_label, C)
-#     avg_accuracies.append(avg_accuracy)
-#     avg_times.append(avg_time)
+from sklearn.model_selection import KFold
 
-# print(avg_accuracies)
-# print(avg_times)
+for C in C_vals:
+    avg_accuracy, avg_time = cross_validate(k, train_data, train_label, C)
+    # kf = KFold(n_splits=5)
+    # # bs = []
+    # for train_index, test_index in kf.split(train_data):
+    #     avg_accuracy = 0
+    #     avg_time = 0
+    #     # print("TRAIN:", train_index, "TEST:", test_index)
+    #     X_train, X_test = train_data[train_index], test_data[test_index]
+    #     y_train, y_test = test_label[train_index], test_label[test_index]
+    #     t1 = time()
+    #     sol = train_svm(train_data, train_label, C)
+    #     t2 = time()    
+    #     avg_time += t2 - t1
+    #     w = sol['x'][:60]
+    #     b = sol['x'][61]
+    #     # bs.append(b)
+    #     accuracy = test_svm(X_test, y_test, w, b)
+    #     print(f'accuracy : {accuracy}')
+    #     avg_accuracy += accuracy
+    # print('split\n')
+    # print(bs)
+    avg_accuracies.append(avg_accuracy)
+    avg_times.append(avg_time)
+
+print(avg_accuracies)
+print(avg_times)
